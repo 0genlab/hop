@@ -6,6 +6,7 @@ import path from 'node:path';
 import { parseCodex } from '../lib/codex.mjs';
 import { parseClaude } from '../lib/claude.mjs';
 import { renderHandoff } from '../lib/render.mjs';
+import { detectLang, MESSAGES } from '../lib/i18n.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hop-test-'));
 const write = (name, recs) => {
@@ -78,4 +79,26 @@ test('render：超预算时逐档压缩', () => {
   const doc = renderHandoff({ session, snap, to: 'claude', budget: 48 * 1024 });
   assert.ok(Buffer.byteLength(doc) <= 48 * 1024, `实际 ${Buffer.byteLength(doc)}`);
   assert.match(doc, /第29轮/, '最后一轮一定在');
+});
+
+test('i18n：HOP_LANG 优先，其次看 locale，非中文一律英文', () => {
+  assert.equal(detectLang({ HOP_LANG: 'en', LANG: 'zh_CN.UTF-8' }), 'en');
+  assert.equal(detectLang({ HOP_LANG: 'zh', LANG: 'en_US.UTF-8' }), 'zh');
+  assert.equal(detectLang({ LANG: 'zh_CN.UTF-8' }), 'zh');
+  assert.equal(detectLang({ LC_ALL: 'en_US.UTF-8', LANG: 'zh_CN.UTF-8' }), 'en');
+  assert.equal(detectLang({ LANG: 'de_DE.UTF-8' }), 'en');
+  assert.deepEqual(Object.keys(MESSAGES.en).sort(), Object.keys(MESSAGES.zh).sort(), '两套文案键一致');
+});
+
+test('render：英文交接文档不混入中文模板', () => {
+  const turns = [{ user: 'fix the login bug', ts: Date.now(), reasoning: [], assistant: [], tools: [{ name: 'Bash', brief: '$ npm test', output: '' }] }];
+  const session = { tool: 'claude', id: 'abc', file: '/f.jsonl', turns };
+  const snap = { cwd: '/repo', exists: true, git: null, listeners: ['node (pid 1) listening on :3000  cwd=/repo'] };
+  const doc = renderHandoff({ session, snap, to: 'codex', lang: 'en' });
+  assert.doesNotMatch(doc, /[一-鿿]/);
+  assert.match(doc, /# Task handoff: Claude Code → Codex/);
+  assert.match(doc, /claude --resume abc/);
+  assert.match(doc, /interrupted mid-run/, '最后一轮无回复时提示中断');
+  const zh = renderHandoff({ session, snap, to: 'codex', lang: 'zh' });
+  assert.match(zh, /# 任务交接：Claude Code → Codex/);
 });
