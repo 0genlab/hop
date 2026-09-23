@@ -61,15 +61,15 @@ hop codex     # continue the latest Claude Code session here in Codex
 `hop` prints what it picked: the source session, working directory and branch, the path to the handoff document (turn count and size), and the command to resume the original session. For example:
 
 ```
-源会话   Codex 019a…（当前目录）
-工作目录 /Users/you/code/app/.worktrees/fix-login  [fix-login]
-交接文档 ~/.hop/handoffs/20260923-101500-codex-to-claude.md（12 轮，31.8 KB）
-切回原会话 codex resume 019a…
+Source    Codex 019a… (current dir /Users/you/code/app)
+Workdir   /Users/you/code/app/.worktrees/fix-login  [fix-login]
+Handoff   ~/.hop/handoffs/20260923-101500-codex-to-claude.md (12 turns, 31.8 KB)
+Go back   codex resume 019a…
 ```
 
 Then it opens a new tab and starts the target agent with this prompt:
 
-> Read `<handoff file>` and take over the task: first restate the current state in ≤ 5 lines, then wait for my confirmation.
+> Read `<handoff file>` and take over this task: following "Notes for the receiving agent" in that file, first restate the current state in 5 lines or fewer, then wait for my confirmation before continuing.
 
 Always check the recap before you let the agent continue.
 
@@ -106,6 +106,7 @@ If no session matches the current directory, `hop` falls back to the newest sess
 | `HOP_CLAUDE_BIN` | `claude` | Claude Code executable |
 | `HOP_CODEX_BIN` | `codex` | Codex executable |
 | `HOP_DIR` | `~/.hop` | Where handoffs, launch scripts, and the link log go |
+| `HOP_LANG` | from `LC_ALL` / `LC_MESSAGES` / `LANG` | `en` or `zh`: language of CLI output, handoff document and launch prompt |
 | `CODEX_HOME` | `~/.codex` | Respected when locating Codex sessions |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Respected when locating Claude Code sessions |
 
@@ -126,7 +127,7 @@ It stays within the size budget. The most recent turns are kept in full detail, 
 
 The worktree and uncommitted changes aren't copied anywhere. They're already on disk, and the new agent starts in the same directory.
 
-> Note: the handoff document and CLI messages are currently written in Chinese. Both agents handle that fine. PRs for i18n are welcome.
+> CLI messages, the handoff document and the launch prompt follow your locale: Chinese when `LANG`/`LC_ALL` is `zh_*`, English otherwise. Set `HOP_LANG=en` or `HOP_LANG=zh` to override.
 
 ## What doesn't carry over
 
@@ -154,7 +155,7 @@ Both session formats are private and undocumented, and either tool may change th
 - **The wrong session was picked.** Run `hop cc --list`, then `--session <id>`.
 - **"No session found".** Try `--latest` or `--days 60`. Also check that `CODEX_HOME` / `CLAUDE_CONFIG_DIR` point to where your sessions actually live.
 - **No new tab opens.** macOS may be blocking automation. Allow your terminal under *System Settings → Privacy & Security → Automation*, or use `--here`.
-- **Codex starts in the wrong directory.** `hop` passes `-C <cwd>` to Codex and `cd`s into the directory before starting Claude Code. Check the `工作目录` (working directory) line in the output. It uses the session's latest cwd.
+- **Codex starts in the wrong directory.** `hop` passes `-C <cwd>` to Codex and `cd`s into the directory before starting Claude Code. Check the `Workdir` line in the output. It uses the session's latest cwd.
 
 ## Development
 

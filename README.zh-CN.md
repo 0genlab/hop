@@ -106,6 +106,7 @@ hop cc --latest                # 不看当前目录，取全局最新的会话
 | `HOP_CLAUDE_BIN` | `claude` | Claude Code 可执行文件 |
 | `HOP_CODEX_BIN` | `codex` | Codex 可执行文件 |
 | `HOP_DIR` | `~/.hop` | 交接文档、启动脚本、切换记录的存放目录 |
+| `HOP_LANG` | 跟随 `LC_ALL` / `LC_MESSAGES` / `LANG` | `zh` 或 `en`：CLI 输出、交接文档和启动提示词的语言 |
 | `CODEX_HOME` | `~/.codex` | 查找 Codex 会话时会读取 |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | 查找 Claude Code 会话时会读取 |
 
