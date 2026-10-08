@@ -121,6 +121,7 @@ The original session is left untouched. `hop` prints its resume command (`codex 
 The handoff document is Markdown and contains:
 
 - **Instructions for the receiving agent**: recap first and wait; grep the raw transcript for details; don't reset uncommitted changes; earlier constraints still apply.
+- **Open failures**: shell commands whose last run in the source session still failed (non-zero exit, or cut off mid-run), with exit code, turn, time, cwd and the tail of the output. Only test/build/lint commands and failures in the final turn are listed; commands that later passed, and grep/diff-style exit 1, are left out. The new agent is told to rerun them first: still failing means it's the work in hand, passing means the note is stale. This section is never compressed.
 - **Source session**: tool, session ID, model, permission/sandbox mode, and the path to the raw JSONL transcript.
 - **Environment snapshot**: working directory, branch, HEAD, upstream ahead/behind, `git status`, diff stat, recent commits, worktrees, stashes, and processes listening on TCP ports whose cwd is inside the project (so the new agent doesn't start a second dev server).
 - **Conversation**: your instructions, messages you sent mid-task (often course corrections, so they're highlighted), the assistant's replies, tool calls with truncated output, and plaintext reasoning when it exists. If the session was compacted, the compaction summary is included too.
