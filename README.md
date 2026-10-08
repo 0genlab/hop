@@ -69,7 +69,9 @@ Go back   codex resume 019a…
 
 Then it opens a new tab and starts the target agent with this prompt:
 
-> Read `<handoff file>` and take over this task: following "Notes for the receiving agent" in that file, first restate the current state in 5 lines or fewer, then wait for my confirmation before continuing.
+> Task handoff "<task name>": Read `<handoff file>` and take over this task: following "Notes for the receiving agent" in that file, first restate the current state in 5 lines or fewer, then wait for my confirmation before continuing.
+
+The task name is the source session's title (a Claude Code `/rename` name wins over its auto title; for Codex, the thread name), or the first user message if there is none. Claude Code is started with `--name "<task name> (from Codex)"`. Codex has no flag for naming a session, so the name only reaches it through the prompt, which its auto-generated thread name usually follows.
 
 Always check the recap before you let the agent continue.
 
