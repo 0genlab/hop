@@ -5,7 +5,7 @@ import { HOP_DIR, gitTop, realpath } from '../lib/util.mjs';
 import { findCodexSessions, codexFileById, parseCodex } from '../lib/codex.mjs';
 import { findClaudeSessions, claudeFileById, parseClaude } from '../lib/claude.mjs';
 import { snapshot } from '../lib/snapshot.mjs';
-import { renderHandoff, TOOL_NAMES, resumeCmd } from '../lib/render.mjs';
+import { renderHandoff, TOOL_NAMES, resumeCmd, taskName } from '../lib/render.mjs';
 import { M } from '../lib/i18n.mjs';
 import { buildScript, writeScript, openTab, runHere } from '../lib/launch.mjs';
 
@@ -91,7 +91,7 @@ function main() {
   console.log(M.outResume(resumeCmd(session)));
   if (o.dryRun) return;
 
-  const script = writeScript(buildScript({ to, cwd, handoff, extra: o.extra }));
+  const script = writeScript(buildScript({ to, cwd, handoff, task: taskName(session), from: TOOL_NAMES[from], extra: o.extra }));
   if (o.here) runHere(script);
   const term = openTab(script);
   console.log(M.launched(term, TOOL_NAMES[to]));

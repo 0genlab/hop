@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseCodex } from '../lib/codex.mjs';
+import { parseCodex, codexThreadName } from '../lib/codex.mjs';
 import { parseClaude } from '../lib/claude.mjs';
-import { renderHandoff } from '../lib/render.mjs';
+import { renderHandoff, taskName } from '../lib/render.mjs';
+import { buildScript } from '../lib/launch.mjs';
 import { detectLang, MESSAGES } from '../lib/i18n.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hop-test-'));
@@ -101,4 +102,40 @@ test('render：英文交接文档不混入中文模板', () => {
   assert.match(doc, /interrupted mid-run/, '最后一轮无回复时提示中断');
   const zh = renderHandoff({ session, snap, to: 'codex', lang: 'zh' });
   assert.match(zh, /# 任务交接：Claude Code → Codex/);
+});
+
+test('标题：claude 自定义名优先，codex 取 session_index 最后一条', () => {
+  const f = write('s2.jsonl', [
+    { type: 'ai-title', aiTitle: '自动标题' },
+    { type: 'custom-title', customTitle: '登录重构' },
+    { type: 'ai-title', aiTitle: '后来的自动标题' },
+    { cwd: '/repo', type: 'user', uuid: 'u1', parentUuid: null, message: { role: 'user', content: 'hi' } },
+  ]);
+  assert.equal(parseClaude(f).title, '登录重构');
+  const index = write('session_index.jsonl', [
+    { id: 'cx1', thread_name: '旧名' },
+    { id: 'cx2', thread_name: '别的会话' },
+    { id: 'cx1', thread_name: '新名' },
+  ]);
+  assert.equal(codexThreadName('cx1', index), '新名');
+  assert.equal(codexThreadName('nope', index), null);
+});
+
+test('任务名：去掉往返交接的后缀，没标题时取首句用户输入', () => {
+  const turns = [{ user: '修一下登录 bug\n细节如下', tools: [], assistant: [] }];
+  assert.equal(taskName({ title: '登录重构（接自 Codex）', turns }), '登录重构');
+  assert.equal(taskName({ title: 'Login refactor (from Claude Code)', turns }), 'Login refactor');
+  assert.equal(taskName({ title: null, turns }), '修一下登录 bug');
+  assert.equal(taskName({ title: null, turns: [] }), null);
+});
+
+test('launch：claude 带 --name，codex 把任务名放进 prompt', () => {
+  const cc = buildScript({ to: 'claude', cwd: '/repo', handoff: '/h.md', task: '登录重构', from: 'Codex', extra: ['--model', 'x'] });
+  assert.match(cc, /'--name' '登录重构(（接自 Codex）|\(from Codex\))' '--model' 'x'/);
+  assert.match(cc, /登录重构/);
+  const cx = buildScript({ to: 'codex', cwd: '/repo', handoff: '/h.md', task: '登录重构', from: 'Claude Code' });
+  assert.doesNotMatch(cx, /--name/);
+  assert.match(cx, /「登录重构」|"登录重构"/);
+  const none = buildScript({ to: 'claude', cwd: '/repo', handoff: '/h.md', task: null, from: 'Codex' });
+  assert.doesNotMatch(none, /--name/);
 });
