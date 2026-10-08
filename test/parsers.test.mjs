@@ -7,6 +7,7 @@ import { parseCodex, codexThreadName } from '../lib/codex.mjs';
 import { parseClaude } from '../lib/claude.mjs';
 import { renderHandoff, taskName } from '../lib/render.mjs';
 import { buildScript } from '../lib/launch.mjs';
+import { openFailures } from '../lib/failures.mjs';
 import { detectLang, MESSAGES } from '../lib/i18n.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hop-test-'));
@@ -138,4 +139,68 @@ test('launch：claude 带 --name，codex 把任务名放进 prompt', () => {
   assert.match(cx, /「登录重构」|"登录重构"/);
   const none = buildScript({ to: 'claude', cwd: '/repo', handoff: '/h.md', task: null, from: 'Codex' });
   assert.doesNotMatch(none, /--name/);
+});
+
+test('未解决的失败：跑通的排除、grep 没搜到不算、中断的标未知、测试排前', () => {
+  const sh = (brief, exit, output = '') => ({ name: 'Bash', brief, shell: true, cwd: '/repo', exit, output });
+  const turns = [
+    { user: 'a', ts: null, assistant: ['x'], reasoning: [], tools: [
+      sh('$ npm test', 1, '[error]\nExit code 1\nFAIL auth.test.js\n  expected 200, got 401'),
+      sh('$ npm run build', 2, '[error]\nExit code 2\nsyntax error'),
+      sh('$ rg TODO src', 1, '[error]\nExit code 1'),
+      sh('$ cat a.log | grep panic', 1, '[error]\nExit code 1'),
+      { name: 'Read', brief: 'Read /repo/x', shell: false, exit: null, output: '[error]\nnot found' },
+    ] },
+    { user: 'b', ts: null, assistant: [], reasoning: [], tools: [
+      sh('$ npm run build', 0, 'ok'),
+      sh('$ ./deploy.sh', null, null),
+    ] },
+  ];
+  const fails = openFailures(turns);
+  assert.deepEqual(fails.map(f => f.brief), ['$ npm test', '$ ./deploy.sh']);
+  assert.equal(fails[0].exit, 1);
+  assert.equal(fails[0].turn, 1);
+  assert.match(fails[0].output, /expected 200, got 401/);
+  assert.doesNotMatch(fails[0].output, /^\[error\]/);
+  assert.equal(fails[1].pending, true);
+
+  const session = { tool: 'claude', id: 'abc', file: '/f.jsonl', turns };
+  const snap = { cwd: '/repo', exists: true, git: null, listeners: [] };
+  const doc = renderHandoff({ session, snap, to: 'codex', lang: 'en' });
+  assert.ok(doc.indexOf('## ⚠️ Open failures') < doc.indexOf('## Source session'), '放在源会话信息之前');
+  assert.match(doc, /exit 1 · turn 1/);
+  assert.match(doc, /interrupted mid-run, outcome unknown/);
+  const clean = renderHandoff({ session: { ...session, turns: [turns[1]].map(t => ({ ...t, tools: [t.tools[0]] })) }, snap, to: 'codex', lang: 'en' });
+  assert.doesNotMatch(clean, /Open failures/, '没有失败就不出这一节');
+});
+
+test('退出码解析：claude 认 Exit code 开头，权限被拒记 null；codex 认 Process exited', () => {
+  const base = { cwd: '/repo', entrypoint: 'cli', isSidechain: false };
+  const f = write('s3.jsonl', [
+    { ...base, type: 'user', uuid: 'u1', parentUuid: null, message: { role: 'user', content: '跑测试' } },
+    { ...base, type: 'assistant', uuid: 'a1', parentUuid: 'u1', message: { content: [
+      { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'pytest' } },
+      { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'rm -rf build' } },
+      { type: 'tool_use', id: 't3', name: 'Bash', input: { command: 'ls' } },
+    ] } },
+    { ...base, type: 'user', uuid: 'u2', parentUuid: 'a1', message: { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 't1', content: 'Exit code 1\n1 failed', is_error: true },
+      { type: 'tool_result', tool_use_id: 't2', content: 'Permission for this action was denied', is_error: true },
+      { type: 'tool_result', tool_use_id: 't3', content: 'a b' },
+    ] } },
+  ]);
+  const t = parseClaude(f).turns[0].tools;
+  assert.deepEqual(t.map(x => [x.shell, x.exit, x.cwd]), [[true, 1, '/repo'], [true, null, '/repo'], [true, 0, '/repo']]);
+
+  const g = write('rollout2.jsonl', [
+    { type: 'session_meta', payload: { id: 'cx2', cwd: '/repo' } },
+    { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'go' }] } },
+    { type: 'response_item', payload: { type: 'function_call', name: 'exec_command', arguments: '{"cmd":"go test ./..."}', call_id: 'c1' } },
+    { type: 'response_item', payload: { type: 'function_call_output', call_id: 'c1', output: 'Process exited with code 0\nOutput:\nok' } },
+    { type: 'response_item', payload: { type: 'function_call', name: 'exec_command', arguments: '{"cmd":"npm run dev"}', call_id: 'c2' } },
+    { type: 'response_item', payload: { type: 'function_call_output', call_id: 'c2', output: 'Process running with session ID 1\nOutput:\n' } },
+    { type: 'response_item', payload: { type: 'custom_tool_call', name: 'apply_patch', input: '*** Begin Patch\n*** End Patch', call_id: 'c3' } },
+  ]);
+  const u = parseCodex(g).turns[0].tools;
+  assert.deepEqual(u.map(x => [x.shell, x.exit ?? null]), [[true, 0], [true, null], [false, null]]);
 });
